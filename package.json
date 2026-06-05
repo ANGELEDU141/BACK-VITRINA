@@ -1,0 +1,27 @@
+{
+  "name": "IPEYS-BACKEND",
+  "version": "1.0.0",
+  "description": "BACKEND",
+  "homepage": "https://github.com/ANGELEDU141/BACK-VITRINA#readme",
+  "bugs": {
+    "url": "https://github.com/ANGELEDU141/BACK-VITRINA/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ANGELEDU141/BACK-VITRINA.git"
+  },
+  "license": "MIT",
+  "author": "angeledu141",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
