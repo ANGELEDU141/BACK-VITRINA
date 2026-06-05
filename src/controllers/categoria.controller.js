@@ -1,54 +1,42 @@
-const Categoria = require('../models/categoria.model');
+const CategoriaService = require('../services/categoria.service');
 
-function list(req, res) {
-  res.json(Categoria.findAll());
-}
-
-
-//CREAR CATEGORIA
-
-function create(req, res) {
-  const { nombre } = req.body;
-
-  if (!nombre) {
-    return res.status(400).json({ message: 'El nombre es obligatorio' });
-  }
-
+// Listado publico de categorias.
+async function list(req, res, next) {
   try {
-    return res.status(201).json(Categoria.create(nombre));
+    return res.json(await CategoriaService.listCategorias());
   } catch (error) {
-    return res.status(409).json({ message: 'La categoria ya existe' });
+    return next(error);
   }
 }
 
-//EDITAR CATEGORIA
-
-function update(req, res) {
-  const { nombre } = req.body;
-
-  if (!nombre) {
-    return res.status(400).json({ message: 'El nombre es obligatorio' });
-  }
-
+// Crear categoria desde el panel administrador.
+async function create(req, res, next) {
   try {
-    const categoria = Categoria.update(req.params.id, nombre);
-    if (!categoria) return res.status(404).json({ message: 'Categoria no encontrada' });
-    return res.json(categoria);
+    const result = await CategoriaService.createCategoria(req.body.nombre);
+    return res.status(result.status).json(result.body);
   } catch (error) {
-    return res.status(409).json({ message: 'La categoria ya existe' });
+    return next(error);
   }
 }
 
-//ELIMINAR CATEGORIA
-
-function remove(req, res) {
-  const result = Categoria.remove(req.params.id);
-
-  if (result.changes === 0) {
-    return res.status(404).json({ message: 'Categoria no encontrada' });
+// Editar categoria desde el panel administrador.
+async function update(req, res, next) {
+  try {
+    const result = await CategoriaService.updateCategoria(req.params.id, req.body.nombre);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return next(error);
   }
+}
 
-  return res.status(204).send();
+// Eliminar categoria desde el panel administrador.
+async function remove(req, res, next) {
+  try {
+    const result = await CategoriaService.deleteCategoria(req.params.id);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return next(error);
+  }
 }
 
 module.exports = {

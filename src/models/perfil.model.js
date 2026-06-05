@@ -1,5 +1,6 @@
-const { getDb } = require('../config/database');
+const { getPool, runInTransaction } = require('../config/database');
 
+// Normalizacion de filas para entregar una estructura estable al frontend.
 function mapPerfil(row) {
   if (!row) return null;
 
@@ -15,7 +16,8 @@ function mapPerfil(row) {
   };
 }
 
-function findPublic({ search, categoriaId }) {
+// Listado publico para grilla con busqueda por perfil, descripcion o categoria.
+async function findPublic({ search, categoriaId }) {
   const filters = [];
   const params = [];
 
@@ -30,9 +32,8 @@ function findPublic({ search, categoriaId }) {
   }
 
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-
-  return getDb()
-    .prepare(`
+  const [rows] = await getPool().query(
+    `
       SELECT
         p.id,
         p.nombre,
@@ -45,33 +46,39 @@ function findPublic({ search, categoriaId }) {
       INNER JOIN categorias c ON c.id = p.categoria_id
       ${where}
       ORDER BY p.created_at DESC, p.id DESC
-    `)
-    .all(...params);
-}
-
-function findById(id) {
-  return mapPerfil(
-    getDb()
-      .prepare(`
-        SELECT
-          p.*,
-          c.nombre AS categoria_nombre
-        FROM perfiles_grilla p
-        INNER JOIN categorias c ON c.id = p.categoria_id
-        WHERE p.id = ?
-      `)
-      .get(id)
+    `,
+    params
   );
+
+  return rows;
 }
 
-function findDetail(id) {
-  const perfil = findById(id);
+async function findById(id) {
+  const [rows] = await getPool().query(
+    `
+      SELECT
+        p.*,
+        c.nombre AS categoria_nombre
+      FROM perfiles_grilla p
+      INNER JOIN categorias c ON c.id = p.categoria_id
+      WHERE p.id = ?
+    `,
+    [id]
+  );
+
+  return mapPerfil(rows[0]);
+}
+
+// Detalle publico para modal con galeria completa.
+async function findDetail(id) {
+  const perfil = await findById(id);
 
   if (!perfil) return null;
 
-  const galeria = getDb()
-    .prepare('SELECT id, imagen_base64 FROM galeria_modales WHERE perfil_id = ? ORDER BY id ASC')
-    .all(id);
+  const [galeria] = await getPool().query(
+    'SELECT id, imagen_base64 FROM galeria_modales WHERE perfil_id = ? ORDER BY id ASC',
+    [id]
+  );
 
   return {
     ...perfil,
@@ -79,84 +86,75 @@ function findDetail(id) {
   };
 }
 
-function replaceGallery(database, perfilId, galeria = []) {
-  database.prepare('DELETE FROM galeria_modales WHERE perfil_id = ?').run(perfilId);
+async function replaceGallery(connection, perfilId, galeria = []) {
+  await connection.query('DELETE FROM galeria_modales WHERE perfil_id = ?', [perfilId]);
 
   if (!Array.isArray(galeria) || galeria.length === 0) {
     return;
   }
 
-  const insertImage = database.prepare(
-    'INSERT INTO galeria_modales (perfil_id, imagen_base64) VALUES (?, ?)'
-  );
+  const values = galeria
+    .map((imagen) => (typeof imagen === 'string' ? imagen : imagen.imagen_base64))
+    .filter(Boolean)
+    .map((imagenBase64) => [perfilId, imagenBase64]);
 
-  galeria.forEach((imagen) => {
-    const imagenBase64 = typeof imagen === 'string' ? imagen : imagen.imagen_base64;
-    if (imagenBase64) insertImage.run(perfilId, imagenBase64);
-  });
-}
-
-function runInTransaction(database, callback) {
-  database.exec('BEGIN');
-
-  try {
-    const result = callback();
-    database.exec('COMMIT');
-    return result;
-  } catch (error) {
-    database.exec('ROLLBACK');
-    throw error;
+  if (values.length > 0) {
+    await connection.query(
+      'INSERT INTO galeria_modales (perfil_id, imagen_base64) VALUES ?',
+      [values]
+    );
   }
 }
 
-function create(data) {
-  const database = getDb();
-
-  return runInTransaction(database, () => {
-    const result = database
-      .prepare(`
+// Creacion protegida de perfil con galeria en una sola transaccion.
+async function create(data) {
+  return runInTransaction(async (connection) => {
+    const [result] = await connection.query(
+      `
         INSERT INTO perfiles_grilla (nombre, descripcion, logo_base64, categoria_id, creado_por)
         VALUES (?, ?, ?, ?, ?)
-      `)
-      .run(data.nombre, data.descripcion || null, data.logo_base64 || null, data.categoria_id, data.creado_por);
+      `,
+      [data.nombre, data.descripcion || null, data.logo_base64 || null, data.categoria_id, data.creado_por]
+    );
 
-    replaceGallery(database, result.lastInsertRowid, data.galeria);
+    await replaceGallery(connection, result.insertId, data.galeria);
 
-    return findDetail(result.lastInsertRowid);
+    return findDetail(result.insertId);
   });
 }
 
-function update(id, data) {
-  const database = getDb();
-
-  return runInTransaction(database, () => {
-    const current = findById(id);
+// Edicion protegida de perfil y reemplazo opcional de galeria.
+async function update(id, data) {
+  return runInTransaction(async (connection) => {
+    const current = await findById(id);
     if (!current) return null;
 
-    database
-      .prepare(`
+    await connection.query(
+      `
         UPDATE perfiles_grilla
         SET nombre = ?, descripcion = ?, logo_base64 = ?, categoria_id = ?
         WHERE id = ?
-      `)
-      .run(
+      `,
+      [
         data.nombre ?? current.nombre,
         data.descripcion ?? current.descripcion,
         data.logo_base64 ?? current.logo_base64,
         data.categoria_id ?? current.categoria_id,
-        id
-      );
+        id,
+      ]
+    );
 
     if (Object.prototype.hasOwnProperty.call(data, 'galeria')) {
-      replaceGallery(database, id, data.galeria);
+      await replaceGallery(connection, id, data.galeria);
     }
 
     return findDetail(id);
   });
 }
 
-function remove(id) {
-  return getDb().prepare('DELETE FROM perfiles_grilla WHERE id = ?').run(id);
+async function remove(id) {
+  const [result] = await getPool().query('DELETE FROM perfiles_grilla WHERE id = ?', [id]);
+  return result;
 }
 
 module.exports = {

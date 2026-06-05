@@ -1,76 +1,52 @@
-const Perfil = require('../models/perfil.model');
-const Categoria = require('../models/categoria.model');
+const PerfilService = require('../services/perfil.service');
 
-function list(req, res) {
-  const perfiles = Perfil.findPublic({
-    search: req.query.search,
-    categoriaId: req.query.categoria_id,
-  });
-
-  res.json(perfiles);
+// Listado publico para grilla con busqueda por nombre, descripcion o categoria.
+async function list(req, res, next) {
+  try {
+    return res.json(await PerfilService.listPerfiles(req.query));
+  } catch (error) {
+    return next(error);
+  }
 }
 
-function detail(req, res) {
-  const perfil = Perfil.findDetail(req.params.id);
-
-  if (!perfil) {
-    return res.status(404).json({ message: 'Perfil no encontrado' });
+// Detalle publico para modal.
+async function detail(req, res, next) {
+  try {
+    const result = await PerfilService.getPerfilDetail(req.params.id);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return next(error);
   }
-
-  return res.json(perfil);
 }
 
-function validatePerfil(data, partial = false) {
-  if (!partial && !data.nombre) return 'El nombre es obligatorio';
-  if (!partial && !data.categoria_id) return 'La categoria_id es obligatoria';
-  if (data.categoria_id && !Categoria.findById(data.categoria_id)) return 'La categoria no existe';
-  return null;
+// Crear perfil desde el panel administrador.
+async function create(req, res, next) {
+  try {
+    const result = await PerfilService.createPerfil(req.user.id, req.body);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return next(error);
+  }
 }
 
-// CREAR PERFIL
-function create(req, res) {
-  const error = validatePerfil(req.body);
-
-  if (error) {
-    return res.status(400).json({ message: error });
+// Editar perfil desde el panel administrador.
+async function update(req, res, next) {
+  try {
+    const result = await PerfilService.updatePerfil(req.params.id, req.body);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return next(error);
   }
-
-  const perfil = Perfil.create({
-    ...req.body,
-    creado_por: req.user.id,
-  });
-
-  return res.status(201).json(perfil);
 }
 
-// EDITAR PERFIL
-
-function update(req, res) {
-  const error = validatePerfil(req.body, true);
-
-  if (error) {
-    return res.status(400).json({ message: error });
+// Eliminar perfil desde el panel administrador.
+async function remove(req, res, next) {
+  try {
+    const result = await PerfilService.deletePerfil(req.params.id);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return next(error);
   }
-
-  const perfil = Perfil.update(req.params.id, req.body);
-
-  if (!perfil) {
-    return res.status(404).json({ message: 'Perfil no encontrado' });
-  }
-
-  return res.json(perfil);
-}
-
-// ELIMINAR PERFIL
-
-function remove(req, res) {
-  const result = Perfil.remove(req.params.id);
-
-  if (result.changes === 0) {
-    return res.status(404).json({ message: 'Perfil no encontrado' });
-  }
-
-  return res.status(204).send();
 }
 
 module.exports = {

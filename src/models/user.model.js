@@ -1,26 +1,32 @@
-const { getDb } = require('../config/database');
+const { getPool } = require('../config/database');
 
 // Consultas de lectura para usuarios del sistema.
-function findAll() {
-  return getDb()
-    .prepare('SELECT id, usuario, role FROM users ORDER BY CAST(id AS INTEGER) ASC')
-    .all();
+async function findAll() {
+  const [rows] = await getPool().query(
+    'SELECT id, usuario, role FROM users ORDER BY id ASC'
+  );
+  return rows;
 }
 
-function findById(id) {
-  return getDb().prepare('SELECT id, usuario, role FROM users WHERE id = ?').get(id);
+async function findById(id) {
+  const [rows] = await getPool().query(
+    'SELECT id, usuario, role FROM users WHERE id = ?',
+    [id]
+  );
+  return rows[0] || null;
 }
 
-function findByUsuario(usuario) {
-  return getDb().prepare('SELECT * FROM users WHERE usuario = ?').get(usuario);
+async function findByUsuario(usuario) {
+  const [rows] = await getPool().query('SELECT * FROM users WHERE usuario = ?', [usuario]);
+  return rows[0] || null;
 }
 
 // Calcula el menor ID positivo disponible para mantener usuarios 1, 2, 3...
-function getNextUserId(database) {
-  const users = database.prepare('SELECT id FROM users ORDER BY CAST(id AS INTEGER) ASC').all();
+async function getNextUserId() {
+  const [rows] = await getPool().query('SELECT id FROM users ORDER BY id ASC');
   let nextId = 1;
 
-  for (const user of users) {
+  for (const user of rows) {
     if (user.id === nextId) {
       nextId += 1;
     } else if (user.id > nextId) {
@@ -32,31 +38,38 @@ function getNextUserId(database) {
 }
 
 // Operaciones de escritura administradas desde el panel.
-function create({ usuario, password, role }) {
-  const database = getDb();
-  const nextId = getNextUserId(database);
+async function create({ usuario, password, role }) {
+  const nextId = await getNextUserId();
 
-  database
-    .prepare('INSERT INTO users (id, usuario, password, role) VALUES (?, ?, ?, ?)')
-    .run(nextId, usuario, password, role);
+  await getPool().query(
+    'INSERT INTO users (id, usuario, password, role) VALUES (?, ?, ?, ?)',
+    [nextId, usuario, password, role]
+  );
 
   return findById(nextId);
 }
 
-function update(id, { usuario, password, role }) {
-  const current = getDb().prepare('SELECT * FROM users WHERE id = ?').get(id);
+async function update(id, { usuario, password, role }) {
+  const current = await findByUsuarioOrId(id);
 
   if (!current) return null;
 
-  getDb()
-    .prepare('UPDATE users SET usuario = ?, password = ?, role = ? WHERE id = ?')
-    .run(usuario ?? current.usuario, password ?? current.password, role ?? current.role, id);
+  await getPool().query(
+    'UPDATE users SET usuario = ?, password = ?, role = ? WHERE id = ?',
+    [usuario ?? current.usuario, password ?? current.password, role ?? current.role, id]
+  );
 
   return findById(id);
 }
 
-function remove(id) {
-  return getDb().prepare('DELETE FROM users WHERE id = ?').run(id);
+async function findByUsuarioOrId(id) {
+  const [rows] = await getPool().query('SELECT * FROM users WHERE id = ?', [id]);
+  return rows[0] || null;
+}
+
+async function remove(id) {
+  const [result] = await getPool().query('DELETE FROM users WHERE id = ?', [id]);
+  return result;
 }
 
 module.exports = {

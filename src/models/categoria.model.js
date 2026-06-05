@@ -1,25 +1,35 @@
-const { getDb } = require('../config/database');
+const { getPool } = require('../config/database');
 
-function findAll() {
-  return getDb().prepare('SELECT id, nombre FROM categorias ORDER BY nombre ASC').all();
+// Consultas de lectura para categorias publicas.
+async function findAll() {
+  const [rows] = await getPool().query('SELECT id, nombre FROM categorias ORDER BY nombre ASC');
+  return rows;
 }
 
-function findById(id) {
-  return getDb().prepare('SELECT id, nombre FROM categorias WHERE id = ?').get(id);
+async function findById(id) {
+  const [rows] = await getPool().query('SELECT id, nombre FROM categorias WHERE id = ?', [id]);
+  return rows[0] || null;
 }
 
-function create(nombre) {
-  const result = getDb().prepare('INSERT INTO categorias (nombre) VALUES (?)').run(nombre);
-  return findById(result.lastInsertRowid);
+// Operaciones de escritura protegidas para administradores.
+async function create(nombre) {
+  const [result] = await getPool().query('INSERT INTO categorias (nombre) VALUES (?)', [nombre]);
+  return findById(result.insertId);
 }
 
-function update(id, nombre) {
-  getDb().prepare('UPDATE categorias SET nombre = ? WHERE id = ?').run(nombre, id);
+async function update(id, nombre) {
+  const [result] = await getPool().query('UPDATE categorias SET nombre = ? WHERE id = ?', [
+    nombre,
+    id,
+  ]);
+
+  if (result.affectedRows === 0) return null;
   return findById(id);
 }
 
-function remove(id) {
-  return getDb().prepare('DELETE FROM categorias WHERE id = ?').run(id);
+async function remove(id) {
+  const [result] = await getPool().query('DELETE FROM categorias WHERE id = ?', [id]);
+  return result;
 }
 
 module.exports = {
