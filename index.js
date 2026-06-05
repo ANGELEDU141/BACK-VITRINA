@@ -1,20 +1,10 @@
-const express = require('express');
-const app = express();
-const port = 3000;
+const app = require('./src/app');
+const { initDatabase } = require('./src/config/database');
 
-app.use(express.json());
+const port = process.env.PORT || 3000;
 
-let products = [
-  { id: 1, name: 'Producto A', price: 10.99 },
-  { id: 2, name: 'Producto B', price: 19.99 },
-  { id: 3, name: 'Producto C', price: 5.99 }
-];
-
-app.get('/products', (req, res) => {
-   return res.json(products);
-});
+initDatabase();
 
 app.listen(port, () => {
-  console.log(`Servidor escuchando en http://localhost:${port} `+ port);
+  console.log(`Servidor escuchando en http://localhost:${port}`);
 });
-
