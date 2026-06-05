@@ -7,6 +7,7 @@ function requireAdmin(req, res, next) {
 
   // Validacion del formato Bearer.
   if (type !== 'Bearer' || !token) {
+    console.warn(`[AUTH] ${req.method} ${req.originalUrl} - token requerido`);
     return res.status(401).json({ message: 'Token requerido' });
   }
 
@@ -15,12 +16,14 @@ function requireAdmin(req, res, next) {
     const payload = jwt.verify(token);
 
     if (payload.role !== 'admin') {
+      console.warn(`[AUTH] ${req.method} ${req.originalUrl} - permisos insuficientes`);
       return res.status(403).json({ message: 'Permisos insuficientes' });
     }
 
     req.user = payload;
     return next();
   } catch (error) {
+    console.warn(`[AUTH] ${req.method} ${req.originalUrl} - ${error.message}`);
     return res.status(401).json({ message: error.message });
   }
 }

@@ -3,7 +3,7 @@ const { getDb } = require('../config/database');
 // Consultas de lectura para usuarios del sistema.
 function findAll() {
   return getDb()
-    .prepare('SELECT id, usuario, role FROM users ORDER BY id ASC')
+    .prepare('SELECT id, usuario, role FROM users ORDER BY CAST(id AS INTEGER) ASC')
     .all();
 }
 
@@ -15,13 +15,32 @@ function findByUsuario(usuario) {
   return getDb().prepare('SELECT * FROM users WHERE usuario = ?').get(usuario);
 }
 
+// Calcula el menor ID positivo disponible para mantener usuarios 1, 2, 3...
+function getNextUserId(database) {
+  const users = database.prepare('SELECT id FROM users ORDER BY CAST(id AS INTEGER) ASC').all();
+  let nextId = 1;
+
+  for (const user of users) {
+    if (user.id === nextId) {
+      nextId += 1;
+    } else if (user.id > nextId) {
+      break;
+    }
+  }
+
+  return nextId;
+}
+
 // Operaciones de escritura administradas desde el panel.
 function create({ usuario, password, role }) {
-  const result = getDb()
-    .prepare('INSERT INTO users (usuario, password, role) VALUES (?, ?, ?)')
-    .run(usuario, password, role);
+  const database = getDb();
+  const nextId = getNextUserId(database);
 
-  return findById(result.lastInsertRowid);
+  database
+    .prepare('INSERT INTO users (id, usuario, password, role) VALUES (?, ?, ?, ?)')
+    .run(nextId, usuario, password, role);
+
+  return findById(nextId);
 }
 
 function update(id, { usuario, password, role }) {

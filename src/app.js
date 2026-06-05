@@ -29,7 +29,7 @@ app.use('/api/perfiles', perfilRoutes);
 
 // Manejador central de errores.
 app.use((error, req, res, next) => {
-  console.error(error);
+  console.error(`[ERROR] ${req.method} ${req.originalUrl}`, error);
   res.status(500).json({ message: 'Error interno del servidor' });
 });
 

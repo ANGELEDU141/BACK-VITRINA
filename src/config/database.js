@@ -8,6 +8,66 @@ const dbPath = path.join(dataDir, 'ipeys.sqlite');
 
 let db;
 
+// Recalcula la secuencia interna de SQLite segun el mayor ID actual.
+function syncUserSequence(database) {
+  database
+    .prepare(`
+      UPDATE sqlite_sequence
+      SET seq = (SELECT COALESCE(MAX(id), 0) FROM users)
+      WHERE name = 'users'
+    `)
+    .run();
+}
+
+// Normaliza IDs de usuarios para mantener una numeracion continua desde 1.
+function compactUserIds(database) {
+  const users = database.prepare('SELECT id FROM users ORDER BY CAST(id AS INTEGER) ASC').all();
+  const changes = users
+    .map((user, index) => ({
+      oldId: user.id,
+      newId: index + 1,
+      tempId: -100000 - index,
+    }))
+    .filter((user) => user.oldId !== user.newId);
+
+  if (changes.length === 0) {
+    syncUserSequence(database);
+    return;
+  }
+
+  console.log(`[DB] Normalizando ${changes.length} ID(s) de usuarios`);
+
+  database.exec('PRAGMA foreign_keys = OFF');
+  database.exec('BEGIN');
+
+  try {
+    // Primero se mueven los usuarios a IDs temporales para evitar colisiones.
+    changes.forEach((user) => {
+      database.prepare('UPDATE users SET id = ? WHERE id = ?').run(user.tempId, user.oldId);
+    });
+
+    // Luego se actualizan las referencias de perfiles creados por cada usuario.
+    changes.forEach((user) => {
+      database
+        .prepare('UPDATE perfiles_grilla SET creado_por = ? WHERE creado_por = ?')
+        .run(user.newId, user.oldId);
+    });
+
+    // Finalmente se asignan los IDs definitivos continuos.
+    changes.forEach((user) => {
+      database.prepare('UPDATE users SET id = ? WHERE id = ?').run(user.newId, user.tempId);
+    });
+
+    syncUserSequence(database);
+    database.exec('COMMIT');
+  } catch (error) {
+    database.exec('ROLLBACK');
+    throw error;
+  } finally {
+    database.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
 // Conexion unica a la base SQLite local.
 function getDb() {
   if (!db) {
@@ -67,6 +127,9 @@ function initDatabase() {
   database
     .prepare('INSERT OR IGNORE INTO users (usuario, password, role) VALUES (?, ?, ?)')
     .run(process.env.NORMAL_USER || 'user', userPassword, 'user');
+
+  // Ordenamiento numerico de usuarios despues de crear los seeds.
+  compactUserIds(database);
 
   // Categorias iniciales para clasificar perfiles de la grilla.
   const categorias = ['Abogados', 'Contadores', 'Arquitectos', 'Ingenieros'];
